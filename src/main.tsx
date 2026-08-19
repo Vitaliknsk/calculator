@@ -1,29 +1,28 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { Component, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import "./index.css";
-import App from "./App.tsx";
+import App from "./App";
 
-/* ------------------------------------------------------------------
-   Предохранитель приложения: если где-то в дереве React случится
-   ошибка, пользователь увидит понятное сообщение с кнопкой
-   перезагрузки, а не «белый экран смерти».
-   ------------------------------------------------------------------ */
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { error: Error | null }
-> {
-  state: { error: Error | null } = { error: null };
+/* ================================================================
+   Точка входа + ErrorBoundary.
+   Без него любая ошибка в рантайме (в т.ч. специфичная для Safari)
+   оставила бы пользователя на пустой белой странице. Теперь вместо
+   этого показывается понятный экран с кнопкой перезагрузки.
+   ================================================================ */
 
-  static getDerivedStateFromError(error: Error) {
-    return { error };
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("Ошибка приложения:", error, info);
-  }
-
-  render() {
-    if (this.state.error) {
+  render(): ReactNode {
+    if (this.state.hasError) {
       return (
         <div
           style={{
@@ -31,46 +30,51 @@ class ErrorBoundary extends React.Component<
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            padding: 24,
             background: "#f1f5ef",
-            fontFamily: '"Golos Text", "Segoe UI", Tahoma, sans-serif',
-            padding: "24px",
+            fontFamily: "'Golos Text', 'Segoe UI', Tahoma, sans-serif",
+            color: "#16241e",
           }}
         >
           <div
             style={{
+              maxWidth: 440,
               background: "#fff",
               border: "1px solid #dbe5dd",
-              borderRadius: "20px",
-              boxShadow: "0 20px 50px -20px rgba(22,36,30,0.25)",
-              padding: "32px",
-              maxWidth: "460px",
+              borderRadius: 22,
+              boxShadow: "0 24px 48px -18px rgb(22 36 30 / 0.24)",
+              padding: "32px 28px",
               textAlign: "center",
-              color: "#16241e",
             }}
           >
             <p
               style={{
-                margin: "0 0 8px",
-                fontSize: "1.15rem",
-                fontWeight: 700,
+                margin: 0,
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: "#b8433a",
               }}
             >
-              Что-то пошло не так
+              Сбой приложения
             </p>
-            <p style={{ margin: "0 0 20px", fontSize: "0.88rem", color: "#5d6d64" }}>
-              Калькулятор столкнулся с непредвиденной ошибкой. Попробуйте перезагрузить
-              страницу — курсы из LocalStorage при этом не потеряются.
+            <h1 style={{ margin: "12px 0 8px", fontSize: 22, fontWeight: 700 }}>Что-то пошло не так</h1>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "#5d6d64" }}>
+              Калькулятор не смог запуститься. Попробуйте перезагрузить страницу — сохранённые курсы
+              в LocalStorage не потеряются.
             </p>
             <button
               onClick={() => window.location.reload()}
               style={{
-                border: "none",
-                borderRadius: "12px",
-                background: "#175241",
+                marginTop: 20,
+                border: 0,
+                borderRadius: 12,
+                background: "#0c2e24",
                 color: "#fff",
-                padding: "12px 28px",
-                fontSize: "0.9rem",
                 fontWeight: 700,
+                fontSize: 14,
+                padding: "12px 22px",
                 cursor: "pointer",
               }}
             >
@@ -84,17 +88,11 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-const rootElement = document.getElementById("root");
-
-if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(
-    <React.StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </React.StrictMode>
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  createRoot(rootEl).render(
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   );
-} else {
-  // Совсем экзотический случай: в документе нет корневого контейнера
-  document.body.textContent = "Не найден элемент #root — страница повреждена.";
 }

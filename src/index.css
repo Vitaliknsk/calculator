@@ -4,6 +4,15 @@
    ДИЗАЙН-СИСТЕМА «ВАЛЮТНЫЙ ДВОР»
    Светлая тема: тёплая «бумажная» зелень, глубокая хвоя,
    латунное золото для цифр и акцентов.
+   ------------------------------------------------------------
+   КРОССБРАУЗЕРНОСТЬ / iOS:
+   • фон — на fixed-слое body::before, т.к. background-attachment:
+     fixed игнорируется мобильным Safari;
+   • 100dvh с фолбэком на 100vh — тулбар Safari не «съедает» футер;
+   • на iPhone поля форм ≥ 16px — иначе Safari авто-зумит при фокусе;
+   • -webkit-префиксы для backdrop-filter и text-size-adjust;
+   • safe-area-inset — контент не прячется под «чёлку» и домашнюю полоску;
+   • prefers-reduced-motion — уважение к настройкам доступности iOS.
    ============================================================ */
 
 @theme {
@@ -43,26 +52,71 @@
   /* Мягкие многослойные тени */
   --shadow-soft: 0 1px 2px rgb(22 36 30 / 0.05), 0 14px 34px -14px rgb(22 36 30 / 0.16);
   --shadow-lift: 0 2px 4px rgb(22 36 30 / 0.06), 0 24px 48px -18px rgb(22 36 30 / 0.24);
-  --shadow-inset-glow: inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
 /* ---------- Базовые стили ---------- */
 
 html {
   scroll-behavior: smooth;
+  /* iOS Safari любит сам менять размер шрифта при смене ориентации */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   font-family: var(--font-body);
   color: var(--color-ink);
   background-color: var(--color-paper);
-  /* Многослойный «живой» фон: золотое свечение, хвойное свечение, точечная сетка */
+  /* Убираем серую «вспышку» тапа на сенсорных экранах */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Быстрый отклик на касания: без 300 мс задержки и двойного зума */
+a,
+button,
+input,
+select,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* iOS: поле с font-size < 16px вызывает авто-зум страницы при фокусе */
+@media (max-width: 40em) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* «Живой» фон: fixed-слой с дрейфующими свечениями и точечной сеткой.
+   Именно position: fixed, а не background-attachment: fixed —
+   мобильный Safari attachment:fixed просто игнорирует. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
   background-image:
-    radial-gradient(1100px 520px at 88% -12%, rgb(229 163 51 / 0.13), transparent 62%),
-    radial-gradient(950px 640px at -12% 8%, rgb(43 130 101 / 0.13), transparent 56%),
+    radial-gradient(1100px 520px at 88% -12%, rgb(229 163 51 / 0.14), transparent 62%),
+    radial-gradient(950px 640px at -12% 8%, rgb(43 130 101 / 0.14), transparent 56%),
     radial-gradient(rgb(22 36 30 / 0.05) 1px, transparent 1px);
   background-size: auto, auto, 22px 22px;
-  background-attachment: fixed;
+  animation: bg-drift 32s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Лёгкое «бумажное» зерно поверх фона */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
 }
 
 ::selection {
@@ -86,7 +140,37 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* 100dvh: на iOS Safari 15.4+ высота учитывает выдвижной тулбар;
+   для более старых — остаётся фолбэк 100vh из Tailwind */
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh !important;
+  }
+}
+
+/* Отступы под «чёлку» / домашнюю полоску iPhone (viewport-fit=cover) */
+.pb-safe {
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}
+
+/* Подложка модального окна: Safari < 18 понимает backdrop-filter
+   только с префиксом -webkit- */
+.modal-backdrop {
+  background: rgb(8 33 26 / 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
 /* ---------- Анимации и «живые» элементы ---------- */
+
+@keyframes bg-drift {
+  from {
+    transform: translate3d(-1.2%, -0.8%, 0);
+  }
+  to {
+    transform: translate3d(1.4%, 1%, 0);
+  }
+}
 
 @keyframes tickerMove {
   to {
@@ -211,6 +295,19 @@ input[type="number"] {
   animation: glowPulse 2.2s ease-out infinite;
 }
 
+/* Scroll-reveal: секции мягко всплывают при попадании в зону видимости */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
 /* Бегущая строка с курсами: дорожка из двух одинаковых половин,
    сдвиг на -50% даёт бесшовный цикл. Пауза при наведении. */
 .ticker-track {
@@ -219,6 +316,29 @@ input[type="number"] {
 }
 .ticker:hover .ticker-track {
   animation-play-state: paused;
+}
+
+/* Уважение к prefers-reduced-motion (настройка доступности iOS/Android) */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  body::before,
+  .ticker-track,
+  .live-glow,
+  .anim-rise,
+  .anim-pop,
+  .anim-toast,
+  .anim-modal,
+  .anim-backdrop,
+  .rate-flash {
+    animation: none !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 /* ---------- Утилитарные классы ---------- */
@@ -231,6 +351,7 @@ input[type="number"] {
 }
 
 .field-label {
+  display: block;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -243,7 +364,7 @@ input[type="number"] {
 }
 .select-shell select {
   appearance: none;
-  -webkit-appearance: none;
+  -webkit-appearance: none; /* iOS Safari без префикса игнорирует */
   width: 100%;
   border: 2px solid var(--color-line);
   border-radius: 14px;

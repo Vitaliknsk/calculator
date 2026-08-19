@@ -2,22 +2,47 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      viewport-fit=cover — для iPhone с «чёлкой»/Dynamic Island:
+      вместе с env(safe-area-inset-*) в CSS контент не прячется
+      под скругления и домашнюю полоску.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Валютный двор — калькулятор RUB · USD · THB</title>
     <meta
       name="description"
       content="Калькулятор валют для рубля, доллара США и тайского бата. Кросс-курсы пересчитываются автоматически через базовый USD."
     />
+    <!--
+      iOS-специфика:
+      • format-detection — Safari на iPhone сам превращает числа
+        в телефонные ссылки; на странице с курсами это ломает вёрстку.
+      • theme-color — цвет адресной строки в Chrome/Edge и Safari PWA.
+      • apple-mobile-web-app-* — корректный режим при добавлении
+        на домашний экран iOS.
+    -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="theme-color" content="#0c2e24" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Валютный двор" />
+
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c2e24'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%23f0b654' stroke-width='4'/%3E%3Cpath d='M27 22v20M27 27h8a5.5 5.5 0 0 1 0 11h-8' fill='none' stroke='%23f0b654' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
     />
+    <link
+      rel="apple-touch-icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c2e24'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%23f0b654' stroke-width='4'/%3E%3Cpath d='M27 22v20M27 27h8a5.5 5.5 0 0 1 0 11h-8' fill='none' stroke='%23f0b654' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
 
     <!--
-      ВАЖНО: шрифты подключаются НЕБЛОКИРУЮЩИМ способом (media="print" → "all").
-      Обычный <link rel="stylesheet"> на fonts.googleapis.com останавливает
-      отрисовку всей страницы, пока Google отвечает, — при недоступности
-      сервиса пользователь видел бы пустой белый экран.
+      КРИТИЧНО ДЛЯ iOS: шрифты подключаются НЕБЛОКИРУЮЩИМ способом
+      (media="print" → "all"). Обычный <link rel="stylesheet"> на
+      fonts.googleapis.com останавливает отрисовку всей страницы,
+      пока Google отвечает, — на iPhone с мобильным интернетом
+      пользователь мог видеть пустой белый экран десятки секунд.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -34,52 +59,60 @@
       />
     </noscript>
 
+    <!-- Критические стили: страница не бывает «пустой» даже до загрузки JS -->
     <style>
-      /* Мгновенная отрисовка: фон и загрузчик видны ещё до загрузки JS и шрифтов */
       html,
       body {
         margin: 0;
-        padding: 0;
-        min-height: 100%;
-      }
-      body {
         background-color: #f1f5ef;
         color: #16241e;
-        font-family: "Golos Text", "Segoe UI", Tahoma, Verdana, sans-serif;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
       }
-      #boot {
+      .boot-screen {
+        min-height: 100vh;
+        min-height: 100dvh;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 18px;
-        min-height: 100vh;
+        gap: 16px;
+        font-family: "Golos Text", "Segoe UI", Tahoma, sans-serif;
       }
-      #boot svg {
-        animation: bootSpin 1.1s linear infinite;
+      .boot-ring {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 4px solid #dcebe2;
+        border-top-color: #2b8265;
+        animation: boot-spin 0.9s linear infinite;
       }
-      #boot span {
-        font-size: 0.9rem;
+      .boot-text {
+        font-size: 14px;
         font-weight: 600;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
         color: #5d6d64;
       }
-      @keyframes bootSpin {
+      @keyframes boot-spin {
         to {
           transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-ring {
+          animation: none;
+          border-top-color: #dcebe2;
         }
       }
     </style>
   </head>
   <body>
     <div id="root">
-      <!-- Запасной загрузчик: показывается, пока React монтирует приложение -->
-      <div id="boot">
-        <svg width="42" height="42" viewBox="0 0 42 42" fill="none" aria-hidden="true">
-          <circle cx="21" cy="21" r="17" stroke="#dcebe2" stroke-width="5" />
-          <path d="M21 4a17 17 0 0 1 17 17" stroke="#e5a333" stroke-width="5" stroke-linecap="round" />
-        </svg>
-        <span>Загружаем калькулятор…</span>
+      <!-- Запасной загрузчик: виден мгновенно, исчезает, когда React смонтировал приложение -->
+      <div class="boot-screen">
+        <div class="boot-ring"></div>
+        <p class="boot-text">Загружаем калькулятор…</p>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

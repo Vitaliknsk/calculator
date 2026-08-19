@@ -12,6 +12,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
      базис всегда согласованы, «дыр» в кросс-курсах не возникает.
    • При первом запуске подставляются курсы по умолчанию,
      поэтому калькулятор никогда не показывает NaN.
+   • Кроссбраузерность: код написан в пределах синтаксиса
+     Safari 14+ (без опциональных цепочек в рантайм-критичных
+     местах), буфер обмена имеет запасной путь для iOS,
+     вёрстка учитывает safe-area и dvh.
    ================================================================ */
 
 /* ---------------- Типы и справочники ---------------- */
@@ -72,7 +76,7 @@ const sym = (c: Currency) => CURRENCY_META[c].symbol;
 
 function getRate(from: Currency, to: Currency, rates: Rates): number {
   if (from === to) return 1;
-  // «Цена» каждой валюты, выраженная в долларах за единицу:
+  // «Цена» каждой валюты, выраженная в единицах за 1 доллар:
   const perUsd: Record<Currency, number> = {
     RUB: rates.usdRub, // за 1 $ дают usdRub рублей
     USD: 1,
@@ -175,6 +179,74 @@ function timeAgo(ts: number, now: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/* ---------------- Хук scroll-reveal ----------------
+   Секции мягко всплывают при попадании в зону видимости.
+   С защитой: если IntersectionObserver недоступен (старый Safari)
+   или событие так и не пришло — контент показываем по таймауту,
+   страница никогда не остаётся «слепой». */
+function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!("IntersectionObserver" in window)) {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting) {
+            setInView(true);
+            io.disconnect();
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+    io.observe(el);
+    const fallback = window.setTimeout(() => setInView(true), 1500);
+    return () => {
+      io.disconnect();
+      window.clearTimeout(fallback);
+    };
+  }, []);
+  return { ref, inView };
+}
+
+const revealClass = (inView: boolean) => `reveal ${inView ? "is-in" : ""}`;
+
+/* ---------------- Копирование в буфер (iOS-совместимое) ----------------
+   navigator.clipboard в Safari работает только по HTTPS и с версии 13.4,
+   поэтому всегда держим запасной путь через скрытое поле:
+   именно связка select() + setSelectionRange() надёжна на iOS. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* переходим к запасному способу */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length); // обязательно для iOS Safari
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 /* ---------------- Иконки (инлайновые SVG) ---------------- */
@@ -289,6 +361,15 @@ function IconChevron() {
   );
 }
 
+function IconCopy() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps} strokeWidth={2}>
+      <rect x="9" y="9" width="12" height="12" rx="2.5" />
+      <path d="M5 15h-.5A2.5 2.5 0 0 1 2 12.5v-8A2.5 2.5 0 0 1 4.5 2h8A2.5 2.5 0 0 1 15 4.5V5" />
+    </svg>
+  );
+}
+
 function Logo() {
   return (
     <svg width="42" height="42" viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -324,7 +405,7 @@ function Ticker({ rates }: { rates: Rates }) {
   }));
   // Две одинаковые половины дорожки: сдвиг на -50% = бесшовный цикл
   const half = (hidden: boolean) => (
-    <div className="flex shrink-0 items-center" aria-hidden={hidden || undefined}>
+    <div className="flex shrink-0 items-center" aria-hidden={hidden}>
       {items.map((it) => (
         <span key={it.label} className="flex items-center gap-3 px-5">
           <span className="text-[0.72rem] font-bold tracking-widest text-pine-300">{it.label}</span>
@@ -335,8 +416,14 @@ function Ticker({ rates }: { rates: Rates }) {
     </div>
   );
   return (
-    <div className="ticker overflow-hidden border-b border-pine-800 bg-pine-950 py-2.5" title="Курсы обновляются администратором — наведите, чтобы остановить">
-      <div className="ticker-track flex w-max">{half(false)}{half(true)}</div>
+    <div
+      className="ticker overflow-hidden border-b border-pine-800 bg-pine-950 py-2.5"
+      title="Наведите, чтобы остановить строку"
+    >
+      <div className="ticker-track flex w-max">
+        {half(false)}
+        {half(true)}
+      </div>
     </div>
   );
 }
@@ -352,7 +439,7 @@ function RatesBoard({ rates, from, to, now }: { rates: Rates; from: Currency; to
   ];
 
   return (
-    <section className="card anim-rise p-5 sm:p-6" style={{ animationDelay: "0.1s" }} aria-label="Актуальные курсы">
+    <section className="card p-5 sm:p-6" aria-label="Актуальные курсы">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-bold text-ink">Табло курсов</h2>
@@ -442,6 +529,7 @@ interface ConverterProps {
   onTo: (c: Currency) => void;
   onSwap: () => void;
   onCalc: () => void;
+  onCopy: () => void;
   spinKey: number;
   pulseKey: number;
   rates: Rates;
@@ -471,7 +559,7 @@ function CurrencySelect({
 }
 
 function ConverterCard(props: ConverterProps) {
-  const { amount, onAmount, from, to, onFrom, onTo, onSwap, onCalc, spinKey, pulseKey, rates } = props;
+  const { amount, onAmount, from, to, onFrom, onTo, onSwap, onCalc, onCopy, spinKey, pulseKey, rates } = props;
 
   // Авторасчёт: результат пересчитывается при каждом изменении полей
   const rate = getRate(from, to, rates);
@@ -608,7 +696,18 @@ function ConverterCard(props: ConverterProps) {
 
         {result !== null ? (
           <div className="relative px-5 py-5 sm:px-6">
-            <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.18em] text-pine-300">Результат</p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.18em] text-pine-300">Результат</p>
+              <button
+                type="button"
+                onClick={onCopy}
+                title="Скопировать результат"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-pine-700 bg-pine-800/80 px-3 py-1.5 text-[0.72rem] font-bold text-pine-200 transition hover:border-gold-500 hover:text-gold-300 active:scale-95"
+              >
+                <IconCopy />
+                Скопировать
+              </button>
+            </div>
             <p className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
               <span className="text-sm font-semibold text-pine-200 tabular-nums">
                 {formatMoney(amountValue ?? 0)} {sym(from)}
@@ -686,10 +785,10 @@ function AdminModal({ rates, onSave, onClose }: AdminModalProps) {
      THB → RUB = (₽ за 1 $) ÷ (฿ за 1 $) — и так далее. */
   const derived = valid
     ? {
-        rubThb: thb.value! / rub.value!,
-        thbRub: rub.value! / thb.value!,
-        rubUsd: 1 / rub.value!,
-        thbUsd: 1 / thb.value!,
+        rubThb: (thb.value as number) / (rub.value as number),
+        thbRub: (rub.value as number) / (thb.value as number),
+        rubUsd: 1 / (rub.value as number),
+        thbUsd: 1 / (thb.value as number),
       }
     : null;
 
@@ -704,7 +803,7 @@ function AdminModal({ rates, onSave, onClose }: AdminModalProps) {
   const handleSave = () => {
     if (!valid || justSaved) return;
     setJustSaved(true);
-    window.setTimeout(() => onSave({ usdRub: rub.value!, usdThb: thb.value! }), 700);
+    window.setTimeout(() => onSave({ usdRub: rub.value as number, usdThb: thb.value as number }), 700);
   };
 
   const inputClass = (hasError: boolean) =>
@@ -720,8 +819,15 @@ function AdminModal({ rates, onSave, onClose }: AdminModalProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Настройки курсов — админ-панель"
+      /* safe-area: на iPhone с «чёлкой» нижний лист не налезает на домашнюю полоску */
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
+      }}
     >
-      <div className="anim-backdrop absolute inset-0 bg-pine-950/55 backdrop-blur-[3px]" onMouseDown={onClose} />
+      <div className="anim-backdrop modal-backdrop absolute inset-0" onMouseDown={onClose} />
 
       <div className="anim-modal relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-line bg-card shadow-lift sm:rounded-3xl">
         <div className="p-5 sm:p-7">
@@ -811,9 +917,7 @@ function AdminModal({ rates, onSave, onClose }: AdminModalProps) {
               {previewRows.map(([label, val]) => (
                 <div key={label} className="rounded-xl border border-line bg-white px-3.5 py-2.5">
                   <p className="text-[0.66rem] font-extrabold uppercase tracking-widest text-ink-soft">{label}</p>
-                  <p className="mt-1 font-display text-[0.95rem] font-bold text-pine-800 tabular-nums">
-                    {val ?? "—"}
-                  </p>
+                  <p className="mt-1 font-display text-[0.95rem] font-bold text-pine-800 tabular-nums">{val ?? "—"}</p>
                 </div>
               ))}
             </div>
@@ -875,7 +979,11 @@ interface ToastState {
 
 function ToastView({ toast, onClose }: { toast: ToastState; onClose: () => void }) {
   return (
-    <div className="fixed bottom-5 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0">
+    <div
+      className="fixed left-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0"
+      /* отступ от нижнего края с учётом домашней полоски iPhone */
+      style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+    >
       <div
         key={toast.id}
         className="anim-toast flex items-center gap-3 rounded-2xl border border-pine-700 bg-pine-900 px-4 py-3.5 text-white shadow-lift"
@@ -883,7 +991,11 @@ function ToastView({ toast, onClose }: { toast: ToastState; onClose: () => void 
       >
         <span
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-            toast.kind === "success" ? "bg-pine-600" : toast.kind === "error" ? "bg-danger-600" : "bg-gold-500 text-pine-950"
+            toast.kind === "success"
+              ? "bg-pine-600"
+              : toast.kind === "error"
+                ? "bg-danger-600"
+                : "bg-gold-500 text-pine-950"
           }`}
         >
           {toast.kind === "success" ? <IconCheck /> : toast.kind === "error" ? <IconAlert /> : <IconInfo />}
@@ -904,7 +1016,7 @@ function ToastView({ toast, onClose }: { toast: ToastState; onClose: () => void 
 /* ---------------- Главный компонент ---------------- */
 
 export default function App() {
-  // Курсы и настройки читается из LocalStorage уже при инициализации
+  // Курсы и настройки читаются из LocalStorage уже при инициализации
   const [rates, setRates] = useState<Rates>(() => loadRates());
   const [amount, setAmount] = useState<string>(() => loadPrefs().amount);
   const [from, setFrom] = useState<Currency>(() => loadPrefs().from);
@@ -915,6 +1027,10 @@ export default function App() {
   const [spinKey, setSpinKey] = useState(0); // анимация разворота swap-кнопки
   const [pulseKey, setPulseKey] = useState(0); // «всплеск» панели результата
   const [now, setNow] = useState(() => Date.now()); // для «обновлено N назад»
+
+  // Scroll-reveal для секций правого столбца
+  const boardReveal = useReveal<HTMLDivElement>();
+  const howReveal = useReveal<HTMLElement>();
 
   const toastTimer = useRef<number | undefined>(undefined);
   const showToast = useCallback((text: string, kind: ToastState["kind"] = "success") => {
@@ -928,7 +1044,7 @@ export default function App() {
     try {
       localStorage.setItem(LS_PREFS_KEY, JSON.stringify({ amount, from, to }));
     } catch {
-      /* приватный режим — не критично */
+      /* приватный режим Safari — не критично */
     }
   }, [amount, from, to]);
 
@@ -952,6 +1068,17 @@ export default function App() {
     setPulseKey((k) => k + 1); // авторасчёт уже сработал — кнопка лишь подтверждает
   };
 
+  const handleCopy = async () => {
+    const v = parseAmount(amount);
+    if (v === null) {
+      showToast("Нечего копировать — сначала введите сумму", "error");
+      return;
+    }
+    const text = `${formatMoney(v * getRate(from, to, rates))} ${sym(to)}`;
+    const ok = await copyText(text);
+    showToast(ok ? `Скопировано: ${text}` : "Не удалось скопировать — выделите результат вручную", ok ? "info" : "error");
+  };
+
   // Сохранение курсов из админ-панели: LocalStorage + мгновенное применение
   const handleSaveRates = (next: { usdRub: number; usdThb: number }) => {
     const updated: Rates = { ...next, savedAt: Date.now() };
@@ -959,7 +1086,7 @@ export default function App() {
     try {
       localStorage.setItem(LS_RATES_KEY, JSON.stringify(updated));
     } catch {
-      /* приватный режим — курсы проживут до перезагрузки */
+      /* приватный режим Safari — курсы проживут до перезагрузки */
     }
     setAdminOpen(false);
     setPulseKey((k) => k + 1);
@@ -971,8 +1098,11 @@ export default function App() {
       {/* Бегущая строка — первое, что видит посетитель обменника */}
       <Ticker rates={rates} />
 
-      {/* Шапка */}
-      <header className="anim-rise mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 pt-6 sm:px-6">
+      {/* Шапка (с отступом под «чёлку» в полноэкранном PWA-режиме) */}
+      <header
+        className="anim-rise mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 sm:px-6"
+        style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}
+      >
         <div className="flex items-center gap-3.5">
           <Logo />
           <div>
@@ -989,7 +1119,7 @@ export default function App() {
           </span>
           <button
             onClick={() => setAdminOpen(true)}
-            className="flex items-center gap-2 rounded-full bg-pine-900 px-4.5 py-2.5 text-sm font-bold text-white shadow-soft transition hover:bg-pine-700 active:scale-95"
+            className="flex items-center gap-2 rounded-full bg-pine-900 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition hover:bg-pine-700 active:scale-95"
           >
             <IconGear />
             Настройки курсов
@@ -1008,16 +1138,23 @@ export default function App() {
           onTo={setTo}
           onSwap={handleSwap}
           onCalc={handleCalc}
+          onCopy={handleCopy}
           spinKey={spinKey}
           pulseKey={pulseKey}
           rates={rates}
         />
 
         <div className="flex flex-col gap-5">
-          <RatesBoard rates={rates} from={from} to={to} now={now} />
+          <div ref={boardReveal.ref} className={revealClass(boardReveal.inView)}>
+            <RatesBoard rates={rates} from={from} to={to} now={now} />
+          </div>
 
           {/* Как это устроено */}
-          <section className="card anim-rise p-5 sm:p-6" style={{ animationDelay: "0.18s" }} aria-label="Как работает пересчёт">
+          <section
+            ref={howReveal.ref}
+            className={`card p-5 sm:p-6 ${revealClass(howReveal.inView)}`}
+            aria-label="Как работает пересчёт"
+          >
             <h2 className="font-display text-base font-bold text-ink">Как работает пересчёт</h2>
             <ol className="mt-4 flex flex-col gap-3.5">
               {[
@@ -1036,7 +1173,7 @@ export default function App() {
       </main>
 
       {/* Футер */}
-      <footer className="mx-auto w-full max-w-6xl px-4 pb-8 sm:px-6">
+      <footer className="mx-auto w-full max-w-6xl px-4 pb-safe sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-[0.74rem] text-ink-soft">
           <p>Курсы задаются вручную в админ-панели и хранятся локально в вашем браузере — без сервера и внешних API.</p>
           <p className="tabular-nums">
