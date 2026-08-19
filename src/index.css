@@ -1,1 +1,394 @@
 @import "tailwindcss";
+
+/* ============================================================
+   ДИЗАЙН-СИСТЕМА «ВАЛЮТНЫЙ ДВОР»
+   Светлая тема: тёплая «бумажная» зелень, глубокая хвоя,
+   латунное золото для цифр и акцентов.
+   ------------------------------------------------------------
+   КРОССБРАУЗЕРНОСТЬ / iOS:
+   • фон — на fixed-слое body::before, т.к. background-attachment:
+     fixed игнорируется мобильным Safari;
+   • 100dvh с фолбэком на 100vh — тулбар Safari не «съедает» футер;
+   • на iPhone поля форм ≥ 16px — иначе Safari авто-зумит при фокусе;
+   • -webkit-префиксы для backdrop-filter и text-size-adjust;
+   • safe-area-inset — контент не прячется под «чёлку» и домашнюю полоску;
+   • prefers-reduced-motion — уважение к настройкам доступности iOS.
+   ============================================================ */
+
+@theme {
+  /* Шрифты: дисплейный Unbounded + текстовый Golos Text (оба с кириллицей) */
+  --font-display: "Unbounded", "Golos Text", sans-serif;
+  --font-body: "Golos Text", "Segoe UI", Tahoma, sans-serif;
+
+  /* Палитра */
+  --color-paper: #f1f5ef;
+  --color-card: #ffffff;
+  --color-ink: #16241e;
+  --color-ink-soft: #5d6d64;
+  --color-line: #dbe5dd;
+
+  --color-pine-950: #08211a;
+  --color-pine-900: #0c2e24;
+  --color-pine-800: #113c30;
+  --color-pine-700: #175241;
+  --color-pine-600: #1d6a53;
+  --color-pine-500: #2b8265;
+  --color-pine-300: #7fb89f;
+  --color-pine-200: #bcd8ca;
+  --color-pine-100: #dcebe2;
+  --color-pine-50: #ecf4ef;
+
+  --color-gold-700: #a96c14;
+  --color-gold-600: #c9861f;
+  --color-gold-500: #e5a333;
+  --color-gold-400: #f0b654;
+  --color-gold-300: #f6ca7e;
+  --color-gold-100: #f9edcf;
+
+  --color-danger-600: #b8433a;
+  --color-danger-100: #f6dcd9;
+  --color-danger-50: #fbebe9;
+
+  /* Мягкие многослойные тени */
+  --shadow-soft: 0 1px 2px rgb(22 36 30 / 0.05), 0 14px 34px -14px rgb(22 36 30 / 0.16);
+  --shadow-lift: 0 2px 4px rgb(22 36 30 / 0.06), 0 24px 48px -18px rgb(22 36 30 / 0.24);
+}
+
+/* ---------- Базовые стили ---------- */
+
+html {
+  scroll-behavior: smooth;
+  /* iOS Safari любит сам менять размер шрифта при смене ориентации */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  /* Убираем серую «вспышку» тапа на сенсорных экранах */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Быстрый отклик на касания: без 300 мс задержки и двойного зума */
+a,
+button,
+input,
+select,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* iOS: поле с font-size < 16px вызывает авто-зум страницы при фокусе */
+@media (max-width: 40em) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* «Живой» фон: fixed-слой с дрейфующими свечениями и точечной сеткой.
+   Именно position: fixed, а не background-attachment: fixed —
+   мобильный Safari attachment:fixed просто игнорирует. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1100px 520px at 88% -12%, rgb(229 163 51 / 0.14), transparent 62%),
+    radial-gradient(950px 640px at -12% 8%, rgb(43 130 101 / 0.14), transparent 56%),
+    radial-gradient(rgb(22 36 30 / 0.05) 1px, transparent 1px);
+  background-size: auto, auto, 22px 22px;
+  animation: bg-drift 32s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Лёгкое «бумажное» зерно поверх фона */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--color-gold-300);
+  color: var(--color-pine-950);
+}
+
+:focus-visible {
+  outline: 3px solid rgb(43 130 101 / 0.55);
+  outline-offset: 2px;
+}
+
+/* Убираем нативные стрелки у number-инпутов */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* 100dvh: на iOS Safari 15.4+ высота учитывает выдвижной тулбар;
+   для более старых — остаётся фолбэк 100vh из Tailwind */
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh !important;
+  }
+}
+
+/* Отступы под «чёлку» / домашнюю полоску iPhone (viewport-fit=cover) */
+.pb-safe {
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}
+
+/* Подложка модального окна: Safari < 18 понимает backdrop-filter
+   только с префиксом -webkit- */
+.modal-backdrop {
+  background: rgb(8 33 26 / 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* ---------- Анимации и «живые» элементы ---------- */
+
+@keyframes bg-drift {
+  from {
+    transform: translate3d(-1.2%, -0.8%, 0);
+  }
+  to {
+    transform: translate3d(1.4%, 1%, 0);
+  }
+}
+
+@keyframes tickerMove {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes popIn {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.965);
+  }
+  55% {
+    transform: scale(1.006);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rateFlash {
+  0% {
+    background-color: rgb(240 182 84 / 0.45);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.955);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spinOnce {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(180deg);
+  }
+}
+
+@keyframes glowPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(43 130 101 / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgb(43 130 101 / 0);
+  }
+}
+
+.anim-rise {
+  animation: riseIn 0.65s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.anim-pop {
+  animation: popIn 0.45s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.rate-flash {
+  animation: rateFlash 1.1s ease-out both;
+  border-radius: 6px;
+}
+
+.anim-toast {
+  animation: toastIn 0.35s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.anim-modal {
+  animation: modalIn 0.32s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.anim-backdrop {
+  animation: backdropIn 0.25s ease-out both;
+}
+
+.anim-spin-once {
+  animation: spinOnce 0.45s cubic-bezier(0.34, 1.3, 0.5, 1) both;
+}
+
+.live-glow {
+  animation: glowPulse 2.2s ease-out infinite;
+}
+
+/* Scroll-reveal: секции мягко всплывают при попадании в зону видимости */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Бегущая строка с курсами: дорожка из двух одинаковых половин,
+   сдвиг на -50% даёт бесшовный цикл. Пауза при наведении. */
+.ticker-track {
+  animation: tickerMove 42s linear infinite;
+  will-change: transform;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+/* Уважение к prefers-reduced-motion (настройка доступности iOS/Android) */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  body::before,
+  .ticker-track,
+  .live-glow,
+  .anim-rise,
+  .anim-pop,
+  .anim-toast,
+  .anim-modal,
+  .anim-backdrop,
+  .rate-flash {
+    animation: none !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------- Утилитарные классы ---------- */
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+}
+
+.field-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.select-shell {
+  position: relative;
+}
+.select-shell select {
+  appearance: none;
+  -webkit-appearance: none; /* iOS Safari без префикса игнорирует */
+  width: 100%;
+  border: 2px solid var(--color-line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 0.72rem 2.4rem 0.72rem 0.95rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.select-shell select:hover {
+  border-color: var(--color-pine-300);
+}
+.select-shell select:focus {
+  outline: none;
+  border-color: var(--color-pine-500);
+  box-shadow: 0 0 0 4px rgb(43 130 101 / 0.14);
+}
+.select-shell > svg {
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--color-ink-soft);
+}
