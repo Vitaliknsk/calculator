@@ -262,6 +262,30 @@ input[type="number"] {
   }
 }
 
+/* Лёгкая «встряска» панели результата при Enter с пустой суммой */
+@keyframes shakeX {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(5px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+.anim-shake {
+  animation: shakeX 0.4s ease both;
+}
+
 .anim-rise {
   animation: riseIn 0.65s cubic-bezier(0.22, 0.9, 0.3, 1) both;
 }
@@ -328,6 +352,7 @@ input[type="number"] {
   .live-glow,
   .anim-rise,
   .anim-pop,
+  .anim-shake,
   .anim-toast,
   .anim-modal,
   .anim-backdrop,
