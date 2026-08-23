@@ -10,13 +10,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
       usdThb — ฿ за 1 $,   rubThb — ฿ за 1 ₽.
     Обратные направления (฿ → $, ฿ → ₽) выводятся автоматически.
 
-    ВАЖНО: конвертация между USD и RUB ОТКЛЮЧЕНА на уровне продукта —
-    калькулятор не даёт выбрать эту пару ни в одном направлении
-    (см. isAllowedPair), не считает и не показывает её курс.
-   Курсы лежат в LocalStorage (ключ valdvor.rates.v2) и переживают
-   перезагрузку. Админ-панель скрыта: вход — неприметная ссылка
-   «Настройки курсов» в подвале или Ctrl/Cmd + Shift + A.
-   ================================================================ */
+    ВАЖНО: конвертация между USD и RUB ОТКЛЮЧЕНА на уровне продукта.
+    Запрещённое направление не «серится», а физически отсутствует
+    в выпадающем списке «В» (allowedTargets): RUB → [THB],
+    USD → [THB], THB → [RUB, USD]. Собрать пару USD ↔ RUB
+    невозможно ни кликом, ни swap'ом, ни старыми настройками из
+    LocalStorage (см. isAllowedPair + loadPrefs).
+
+    Курсы лежат в LocalStorage (ключ valdvor.rates.v2) и переживают
+    перезагрузку. Админ-панель скрыта: вход — неприметная ссылка
+    «Настройки курсов» в подвале или Ctrl/Cmd + Shift + A.
+    ================================================================ */
 
 /* ---------------- Типы и справочники ---------------- */
 
@@ -82,6 +86,14 @@ function isAllowedPair(a: Currency, b: Currency): boolean {
   if (a === b) return false;
   const noDirectExchange: Currency[] = ["USD", "RUB"];
   return !(noDirectExchange.includes(a) && noDirectExchange.includes(b));
+}
+
+// Список валют, в которые ВООБЩЕ можно обменять выбранную:
+//   RUB → [THB],  USD → [THB],  THB → [RUB, USD].
+// Запрещённые направления не «серятся», а физически отсутствуют
+// в выпадающем списке — собрать пару USD ↔ RUB невозможно.
+function allowedTargets(from: Currency): Currency[] {
+  return CURRENCIES.filter((c) => isAllowedPair(from, c));
 }
 /* ---------------- LocalStorage: чтение с защитой от NaN ---------------- */
 
@@ -381,15 +393,15 @@ function CurrencySelect({
   label,
   value,
   onChange,
-  isOptionDisabled,
+  options,
 }: {
   id: string;
   label: string;
   value: Currency;
   onChange: (c: Currency) => void;
-  // Запрещённые варианты (например, USD при выбранном RUB) выводятся
-  // серыми и неоткликающимися — пара физически не выбирается
-  isOptionDisabled: (c: Currency) => boolean;
+  // Рендерим ТОЛЬКО разрешённые валюты: запрещённых направлений
+  // в списке нет вовсе (например, при «Из: RUB» в «В» лишь THB)
+  options: Currency[];
 }) {
   return (
     <div>
@@ -398,8 +410,8 @@ function CurrencySelect({
       </label>
       <div className="select-shell mt-1.5">
         <select id={id} value={value} onChange={(e) => onChange(e.target.value as Currency)}>
-          {CURRENCIES.map((c) => (
-            <option key={c} value={c} disabled={isOptionDisabled(c)}>
+          {options.map((c) => (
+            <option key={c} value={c}>
               {c} · {sym(c)} — {CURRENCY_META[c].title}
             </option>
           ))}
@@ -466,12 +478,14 @@ function ConverterCard(props: ConverterProps) {
               />
             </div>
           </div>
+          {/* «Из» — любая из трёх валют: исходную можно выбирать свободно,
+              а доступные направления обмена определит список «В» */}
           <CurrencySelect
             id="cur-from"
             label="Из валюты"
             value={from}
             onChange={onFrom}
-            isOptionDisabled={(c) => !isAllowedPair(c, to)}
+            options={CURRENCIES}
           />
         </div>
 
@@ -491,14 +505,15 @@ function ConverterCard(props: ConverterProps) {
         </div>
 
         {/* Строка 2: валюта «В».
-            Список учитывает правило: USD ↔ RUB не конвертируются,
-            «та же валюта» — тоже; запрещённые варианты серые. */}
+            В списке присутствуют ТОЛЬКО доступные направления обмена:
+            RUB → [THB], USD → [THB], THB → [RUB, USD].
+            USD ↔ RUB в списке нет вовсе — расчёт невозможен. */}
         <CurrencySelect
           id="cur-to"
           label="В валюту"
           value={to}
           onChange={onTo}
-          isOptionDisabled={(c) => !isAllowedPair(from, c)}
+          options={allowedTargets(from)}
         />
       </form>
 
