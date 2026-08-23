@@ -6,13 +6,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
    Интерфейс пользователя — только самое нужное:
      сумма → валюта «Из» → swap → валюта «В» → результат + курс пары.
 
-   Админ задаёт вручную лишь ДВА курса (оба — к тайскому бату):
-     usdThb — ฿ за 1 $,   rubThb — ฿ за 1 ₽.
-   Все остальные направления выводятся автоматически:
-     rate(X → Y) = (฿ за X) / (฿ за Y)
-   Например, RUB → USD = rubThb / usdThb. Курс USD-RUB нигде
-   не хранится и не отображается — он просто производная величина.
+    Админ задаёт вручную лишь ДВА курса (оба — к тайскому бату):
+      usdThb — ฿ за 1 $,   rubThb — ฿ за 1 ₽.
+    Обратные направления (฿ → $, ฿ → ₽) выводятся автоматически.
 
+    ВАЖНО: конвертация между USD и RUB ОТКЛЮЧЕНА на уровне продукта —
+    калькулятор не даёт выбрать эту пару ни в одном направлении
+    (см. isAllowedPair), не считает и не показывает её курс.
    Курсы лежат в LocalStorage (ключ valdvor.rates.v2) и переживают
    перезагрузку. Админ-панель скрыта: вход — неприметная ссылка
    «Настройки курсов» в подвале или Ctrl/Cmd + Shift + A.
@@ -57,11 +57,13 @@ const sym = (c: Currency) => CURRENCY_META[c].symbol;
    Базис всех вычислений — тайский бат. Для каждой валюты известна
    её «цена» в батах:  perThb = { RUB: rubThb, USD: usdThb, THB: 1 }.
 
-   Курс любой пары:  rate(X → Y) = perThb[X] / perThb[Y]
-     RUB → THB = rubThb / 1 = rubThb          (прямой курс админа)
-     THB → RUB = 1 / rubThb                   (обратный)
-     RUB → USD = rubThb / usdThb              (выводимый: ₽ в батах ÷ $ в батах)
-   ================================================================ */
+    Курс любой пары:  rate(X → Y) = perThb[X] / perThb[Y]
+      RUB → THB = rubThb / 1 = rubThb          (прямой курс админа)
+      THB → RUB = 1 / rubThb                   (обратный)
+      USD → THB = usdThb,  THB → USD = 1 / usdThb
+    Направление USD ↔ RUB в интерфейсе запрещено (isAllowedPair),
+    поэтому в расчётах участвуют только пары через бат.
+    ================================================================ */
 
 function getRate(from: Currency, to: Currency, rates: Rates): number {
   if (from === to) return 1;
@@ -73,6 +75,14 @@ function getRate(from: Currency, to: Currency, rates: Rates): number {
   return perThb[from] / perThb[to];
 }
 
+// Продуктовое правило обменника: доллар и рубль между собой
+// НЕ конвертируются (ни USD → RUB, ни RUB → USD), «пара с собой»
+// тоже лишена смысла. Разрешены только направления через бат.
+function isAllowedPair(a: Currency, b: Currency): boolean {
+  if (a === b) return false;
+  const noDirectExchange: Currency[] = ["USD", "RUB"];
+  return !(noDirectExchange.includes(a) && noDirectExchange.includes(b));
+}
 /* ---------------- LocalStorage: чтение с защитой от NaN ---------------- */
 
 function loadRates(): Rates {
@@ -110,10 +120,15 @@ function loadPrefs(): Prefs {
     if (!raw) return fallback;
     const p = JSON.parse(raw) as Partial<Prefs>;
     const isCur = (v: unknown): v is Currency => v === "RUB" || v === "USD" || v === "THB";
+    const from = isCur(p.from) ? p.from : fallback.from;
+    let to = isCur(p.to) ? p.to : fallback.to;
+    // В старых настройках могла остаться запрещённая пара (например,
+    // USD → RUB) — мягко приводим к допустимому направлению через бат
+    if (!isAllowedPair(from, to)) to = from === "THB" ? "RUB" : "THB";
     return {
       amount: typeof p.amount === "string" ? sanitizeAmount(p.amount) : fallback.amount,
-      from: isCur(p.from) ? p.from : fallback.from,
-      to: isCur(p.to) ? p.to : fallback.to,
+      from,
+      to,
     };
   } catch {
     return fallback;
@@ -366,11 +381,15 @@ function CurrencySelect({
   label,
   value,
   onChange,
+  isOptionDisabled,
 }: {
   id: string;
   label: string;
   value: Currency;
   onChange: (c: Currency) => void;
+  // Запрещённые варианты (например, USD при выбранном RUB) выводятся
+  // серыми и неоткликающимися — пара физически не выбирается
+  isOptionDisabled: (c: Currency) => boolean;
 }) {
   return (
     <div>
@@ -380,7 +399,7 @@ function CurrencySelect({
       <div className="select-shell mt-1.5">
         <select id={id} value={value} onChange={(e) => onChange(e.target.value as Currency)}>
           {CURRENCIES.map((c) => (
-            <option key={c} value={c}>
+            <option key={c} value={c} disabled={isOptionDisabled(c)}>
               {c} · {sym(c)} — {CURRENCY_META[c].title}
             </option>
           ))}
@@ -447,7 +466,13 @@ function ConverterCard(props: ConverterProps) {
               />
             </div>
           </div>
-          <CurrencySelect id="cur-from" label="Из валюты" value={from} onChange={onFrom} />
+          <CurrencySelect
+            id="cur-from"
+            label="Из валюты"
+            value={from}
+            onChange={onFrom}
+            isOptionDisabled={(c) => !isAllowedPair(c, to)}
+          />
         </div>
 
         {/* Кнопка swap — поменять валюты местами */}
@@ -465,8 +490,16 @@ function ConverterCard(props: ConverterProps) {
           </button>
         </div>
 
-        {/* Строка 2: валюта «В» */}
-        <CurrencySelect id="cur-to" label="В валюту" value={to} onChange={onTo} />
+        {/* Строка 2: валюта «В».
+            Список учитывает правило: USD ↔ RUB не конвертируются,
+            «та же валюта» — тоже; запрещённые варианты серые. */}
+        <CurrencySelect
+          id="cur-to"
+          label="В валюту"
+          value={to}
+          onChange={onTo}
+          isOptionDisabled={(c) => !isAllowedPair(from, c)}
+        />
       </form>
 
       {/* Результат */}
@@ -586,8 +619,9 @@ function AdminModal({ rates, onSave, onClose }: AdminModalProps) {
           </div>
 
           <p className="mt-4 rounded-xl border border-pine-100 bg-pine-50 p-3.5 text-[0.8rem] leading-relaxed text-pine-800">
-            Задайте два курса к тайскому бату. Остальные пары, например RUB → USD,
-            пересчитаются автоматически.
+            Задайте два курса к тайскому бату — обратные (฿ → ₽ и ฿ → $)
+            пересчитаются автоматически. Конвертация USD ↔ RUB в
+            калькуляторе отключена.
           </p>
 
           <div className="mt-5 flex flex-col gap-4">
@@ -769,6 +803,21 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Смена валюты «Из»: если новая пара запрещена (USD ↔ RUB или
+  // «та же валюта»), валюту «В» автоматически подставляем допустимую.
+  // Swap запрещённую пару создать не может — разрешённые пары симметричны.
+  const handleChangeFrom = (c: Currency) => {
+    setFrom(c);
+    if (!isAllowedPair(c, to)) setTo(c === "THB" ? "RUB" : "THB");
+  };
+
+  // Смена валюты «В»: уважаем явный выбор пользователя, поэтому
+  // подстраиваем валюту «Из», а не отменяем его выбор.
+  const handleChangeTo = (c: Currency) => {
+    setTo(c);
+    if (!isAllowedPair(from, c)) setFrom(c === "THB" ? "RUB" : "THB");
+  };
+
   const handleSwap = () => {
     setFrom(to);
     setTo(from);
@@ -819,8 +868,8 @@ export default function App() {
             onAmount={setAmount}
             from={from}
             to={to}
-            onFrom={setFrom}
-            onTo={setTo}
+            onFrom={handleChangeFrom}
+            onTo={handleChangeTo}
             onSwap={handleSwap}
             onSubmit={handleSubmit}
             spinKey={spinKey}
