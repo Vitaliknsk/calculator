@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* ================================================================
-   ВАЛЮТНЫЙ ДВОР — минималистичный SPA-калькулятор: RUB / USD / THB
+   САЯМА EXCHANGE — минималистичный SPA-калькулятор: RUB / USD / THB
    ----------------------------------------------------------------
    Интерфейс пользователя — только самое нужное:
      сумма → валюта «Из» → swap → валюта «В» → результат + курс пары.
@@ -308,18 +308,95 @@ function IconChevron() {
 }
 
 function Logo() {
+  /* Эмблема «Саяма Exchange»:
+     • кольцо из двух круговых стрелок (цикл обмена) с градиентом
+       изумруд → золото (userSpaceOnUse — единый градиент на всё кольцо);
+     • внутри — символы валют ₽ $ ฿;
+     • внизу — маленький силуэт слона (фирменный персонаж). */
   return (
-    <svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="var(--color-pine-900)" stroke="var(--color-pine-700)" />
-      <circle cx="23" cy="25" r="12" stroke="var(--color-gold-400)" strokeWidth="2.6" />
-      <path
-        d="M19 18v14M19 21.5h5a3.6 3.6 0 0 1 0 7.2h-5"
-        stroke="var(--color-gold-400)"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-      />
-      <circle cx="37" cy="11" r="7" fill="var(--color-gold-500)" />
-      <path d="M34.2 11h5.6M37 8.2v5.6" stroke="var(--color-pine-950)" strokeWidth="1.9" strokeLinecap="round" />
+    <svg width="56" height="56" viewBox="0 0 120 120" role="img" aria-label="Логотип Саяма Exchange">
+      <defs>
+        <linearGradient id="sx-grad" gradientUnits="userSpaceOnUse" x1="26" y1="46" x2="94" y2="46">
+          <stop offset="0" stopColor="#10b981" />
+          <stop offset="1" stopColor="#e5a333" />
+        </linearGradient>
+      </defs>
+
+      {/* Верхняя дуга кольца со стрелкой; нижняя — её поворот на 180° */}
+      <g id="sx-cycle">
+        <path
+          d="M28.05 34.37A34 34 0 0 1 91.95 34.37"
+          fill="none"
+          stroke="url(#sx-grad)"
+          strokeWidth="7"
+          strokeLinecap="round"
+        />
+        <path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#sx-grad)" />
+      </g>
+      <use href="#sx-cycle" transform="rotate(180 60 46)" />
+
+      {/* Символы валют внутри кольца */}
+      <text
+        x="60"
+        y="42"
+        textAnchor="middle"
+        fontFamily="'Unbounded','Golos Text',sans-serif"
+        fontWeight="800"
+        fontSize="17"
+        fill="#232f2a"
+      >
+        $
+      </text>
+      <text
+        x="43"
+        y="60"
+        textAnchor="middle"
+        fontFamily="'Unbounded','Golos Text',sans-serif"
+        fontWeight="700"
+        fontSize="13"
+        fill="#0d9488"
+      >
+        ₽
+      </text>
+      <text
+        x="77"
+        y="60"
+        textAnchor="middle"
+        fontFamily="'Unbounded','Golos Text',sans-serif"
+        fontWeight="700"
+        fontSize="13"
+        fill="#c9861f"
+      >
+        ฿
+      </text>
+
+      {/* Силуэт слона под кольцом */}
+      <g fill="#232f2a">
+        <ellipse cx="57" cy="103" rx="15.5" ry="8.5" />
+        <circle cx="74" cy="98.5" r="7" />
+        <rect x="45.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="53" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="60.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="67.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        {/* хобот */}
+        <path
+          d="M79.8 101.5c3.6.4 5.4 2.3 5.6 5.4.15 2.3-1.1 3.7-2.9 3.8"
+          fill="none"
+          stroke="#232f2a"
+          strokeWidth="3.1"
+          strokeLinecap="round"
+        />
+        {/* хвост */}
+        <path
+          d="M42.2 99.5c-2.8.6-3.9 2.8-3.4 5.4"
+          fill="none"
+          stroke="#232f2a"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        {/* ухо — светлая «вырубка» в силуэте */}
+        <circle cx="71.4" cy="98.2" r="3.4" fill="#f1f5ef" />
+      </g>
     </svg>
   );
 }
@@ -1037,8 +1114,18 @@ export default function App() {
         <div className="flex items-center gap-3.5">
           <Logo />
           <div>
-            <h1 className="font-display text-lg font-bold leading-tight text-ink sm:text-xl">Валютный двор</h1>
-            <p className="mt-0.5 text-[0.64rem] font-extrabold uppercase tracking-[0.22em] text-pine-600">
+            {/* Вордмарк: «САЯМА» — жирный тёмный графит,
+                «EXCHANGE» — градиент изумруд → золото (Unbounded 700/800).
+                Крупно, контрастно, с увеличенным трекингом — читается и на мобильных */}
+            <h1 className="leading-none">
+              <span className="block font-display text-[1.45rem] font-bold tracking-[0.08em] text-[#232f2a] sm:text-2xl">
+                САЯМА
+              </span>
+              <span className="mt-1 block bg-gradient-to-r from-emerald-600 to-gold-600 bg-clip-text font-display text-[0.78rem] font-bold tracking-[0.42em] text-transparent sm:text-[0.86rem]">
+                EXCHANGE
+              </span>
+            </h1>
+            <p className="mt-1 text-[0.64rem] font-extrabold uppercase tracking-[0.22em] text-pine-600">
               RUB · USD · THB
             </p>
           </div>
