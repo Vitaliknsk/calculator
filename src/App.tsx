@@ -18,8 +18,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
     LocalStorage (см. isAllowedPair + loadPrefs).
 
     Курсы лежат в LocalStorage (ключ valdvor.rates.v2) и переживают
-    перезагрузку. Админ-панель скрыта: вход — неприметная ссылка
-    «Настройки курсов» в подвале или Ctrl/Cmd + Shift + A.
+    перезагрузку. Админ-панель защищена паролем (см. ADMIN_PASSWORD):
+    вход — неприметная ссылка «Настройки курсов» в подвале или
+    Ctrl/Cmd + Shift + A, затем окно ввода пароля. Успешный вход
+    запоминается в sessionStorage и не спрашивается повторно.
     ================================================================ */
 
 /* ---------------- Типы и справочники ---------------- */
@@ -49,6 +51,30 @@ const CURRENCIES: Currency[] = ["RUB", "USD", "THB"];
 const LS_RATES_KEY = "valdvor.rates.v2";
 const LS_RATES_KEY_V1 = "valdvor.rates.v1"; // старый формат (база USD) — для миграции
 const LS_PREFS_KEY = "valdvor.prefs.v1";
+
+/* ---------------- Защита админ-панели ---------------- */
+
+const ADMIN_PASSWORD = "1122"; // пароль входа в настройки курсов
+const ADMIN_SESSION_KEY = "valdvor.admin.session"; // флаг сессии (вкладка)
+
+// Успешный вход запоминается в sessionStorage: пока вкладка открыта,
+// пароль повторно не спрашивается. Это клиентская защита от обычных
+// пользователей — не полноценная аутентификация (без бэкенда).
+function isAdminSession(): boolean {
+  try {
+    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "ok";
+  } catch {
+    return false; // приватный режим — считаем, что сессии нет
+  }
+}
+
+function setAdminSession(): void {
+  try {
+    sessionStorage.setItem(ADMIN_SESSION_KEY, "ok");
+  } catch {
+    /* приватный режим — пароль придётся вводить каждый раз */
+  }
+}
 
 // Дефолтные курсы первого запуска — калькулятор никогда не покажет NaN
 const DEFAULT_RATES: Rates = { usdThb: 34.12, rubThb: 0.3538, savedAt: Date.now() };
@@ -560,6 +586,140 @@ function ConverterCard(props: ConverterProps) {
   );
 }
 
+/* ---------------- Экран ввода пароля (защита админ-панели) ---------------- */
+
+function IconLock() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+      <path d="M12 14.5v2.5" />
+    </svg>
+  );
+}
+
+function PasswordGate({ onAuthed, onClose }: { onAuthed: () => void; onClose: () => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState(false);
+  const [shakeId, setShakeId] = useState(0); // каждая ошибка — новая «встряска»
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Автофокус на поле, Escape закрывает, прокрутка страницы блокируется
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  const submit = () => {
+    if (value === ADMIN_PASSWORD) {
+      setAdminSession(); // запоминаем вход в рамках сессии вкладки
+      onAuthed(); // открываем саму форму курсов
+    } else {
+      setError(true);
+      setValue("");
+      setShakeId((k) => k + 1);
+      inputRef.current?.focus();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Вход в админ-панель"
+    >
+      <div className="modal-backdrop anim-backdrop absolute inset-0" onMouseDown={onClose} />
+
+      {/* Внешняя карточка — появление, внутренняя — «встряска» при ошибке */}
+      <div className="anim-modal relative w-full max-w-xs">
+        <div
+          key={shakeId}
+          className={`overflow-hidden rounded-3xl border border-line bg-card shadow-lift ${shakeId ? "anim-shake" : ""}`}
+        >
+          <div className="p-5 sm:p-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-pine-900 text-gold-400">
+                <IconLock />
+              </span>
+              <div>
+                <h2 className="font-display text-base font-bold text-ink">Вход для администратора</h2>
+                <p className="mt-0.5 text-[0.66rem] font-extrabold uppercase tracking-[0.16em] text-pine-600">
+                  настройки курсов
+                </p>
+              </div>
+            </div>
+
+            <form
+              className="mt-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+            >
+              <label htmlFor="admin-password" className="field-label">
+                Пароль
+              </label>
+              <input
+                id="admin-password"
+                ref={inputRef}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="••••"
+                className={`mt-1.5 w-full rounded-xl border-2 bg-white px-4 py-3 text-center font-display text-xl font-bold tracking-[0.45em] text-ink transition focus:outline-none focus:ring-4 ${
+                  error
+                    ? "border-danger-600 focus:border-danger-600 focus:ring-danger-600/15"
+                    : "border-line focus:border-pine-500 focus:ring-pine-500/15"
+                }`}
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  setError(false); // стираем ошибку при новом вводе
+                }}
+              />
+              {/* Сообщение об ошибке — всегда резервирует место, чтобы окно не «прыгало» */}
+              <p className="mt-2 flex h-5 items-center justify-center gap-1.5 text-[0.76rem] font-bold text-danger-600">
+                {error && (
+                  <>
+                    <IconAlert /> Неверный пароль
+                  </>
+                )}
+              </p>
+
+              <div className="mt-2 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 rounded-xl border-2 border-line bg-white px-4 py-2.5 text-sm font-bold text-ink-soft transition hover:border-pine-200 hover:text-ink"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-pine-700 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition hover:bg-pine-600 active:scale-95"
+                >
+                  <IconLock />
+                  Войти
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Админ-панель (скрыта от пользователей) ---------------- */
 
 interface AdminModalProps {
@@ -779,6 +939,7 @@ export default function App() {
   const [to, setTo] = useState<Currency>(prefs.to);
 
   const [adminOpen, setAdminOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false); // окно ввода пароля
   const [toast, setToast] = useState<ToastState | null>(null);
   const [spinKey, setSpinKey] = useState(0); // анимация разворота swap-кнопки
   const [fx, setFx] = useState<{ id: number; kind: "pulse" | "shake" }>({ id: 0, kind: "pulse" });
@@ -806,12 +967,23 @@ export default function App() {
     return () => window.clearInterval(t);
   }, []);
 
-  // Скрытый вход в админ-панель: Ctrl/Cmd + Shift + A (работает в любой раскладке)
+  // Вход в админ-панель: если сессия уже подтверждена (sessionStorage) —
+  // сразу форма курсов, иначе сначала окно ввода пароля
+  const openAdmin = () => {
+    if (isAdminSession()) {
+      setAdminOpen(true);
+    } else {
+      setAuthOpen(true);
+    }
+  };
+
+  // Скрытый вход: Ctrl/Cmd + Shift + A (работает в любой раскладке)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyA") {
         e.preventDefault();
-        setAdminOpen(true);
+        if (isAdminSession()) setAdminOpen(true);
+        else setAuthOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -903,7 +1075,7 @@ export default function App() {
         <div className="pb-safe flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-[0.72rem] text-ink-soft">
           <p>Курсы хранятся в LocalStorage браузера</p>
           <button
-            onClick={() => setAdminOpen(true)}
+            onClick={openAdmin}
             title="Ctrl + Shift + A"
             className="flex items-center gap-1.5 font-semibold text-ink-soft/80 transition hover:text-pine-700"
           >
@@ -912,6 +1084,17 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {/* Окно ввода пароля — показывается до первого успешного входа в сессии */}
+      {authOpen && (
+        <PasswordGate
+          onAuthed={() => {
+            setAuthOpen(false);
+            setAdminOpen(true); // пароль верный — сразу открываем форму курсов
+          }}
+          onClose={() => setAuthOpen(false)}
+        />
+      )}
 
       {/* Админ-панель */}
       {adminOpen && <AdminModal rates={rates} onSave={handleSaveRates} onClose={() => setAdminOpen(false)} />}
