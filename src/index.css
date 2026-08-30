@@ -16,9 +16,11 @@
    ============================================================ */
 
 @theme {
-  /* Шрифты: дисплейный Unbounded + текстовый Golos Text (оба с кириллицей) */
+  /* Шрифты: дисплейный Unbounded + текстовый Golos Text (оба с кириллицей),
+     Montserrat 700 — фирменный шрифт названия «Саяма Exchange» */
   --font-display: "Unbounded", "Golos Text", sans-serif;
   --font-body: "Golos Text", "Segoe UI", Tahoma, sans-serif;
+  --font-brand: "Montserrat", "Golos Text", sans-serif;
 
   /* Палитра */
   --color-paper: #f1f5ef;
