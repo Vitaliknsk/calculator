@@ -1033,14 +1033,18 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col items-center font-body text-ink">
       {/* Шапка */}
-      <header className="anim-rise flex w-full max-w-md items-center gap-3.5 px-4 pb-5 pt-8 sm:px-0">
-        <Logo />
-        <div>
-          <h1 className="font-display text-lg font-bold leading-tight text-ink sm:text-xl">Валютный двор</h1>
-          <p className="mt-0.5 text-[0.64rem] font-extrabold uppercase tracking-[0.22em] text-pine-600">
-            RUB · USD · THB
-          </p>
+      <header className="anim-rise w-full max-w-md px-4 pb-5 pt-8 sm:px-0">
+        <div className="flex items-center gap-3.5">
+          <Logo />
+          <div>
+            <h1 className="font-display text-lg font-bold leading-tight text-ink sm:text-xl">Валютный двор</h1>
+            <p className="mt-0.5 text-[0.64rem] font-extrabold uppercase tracking-[0.22em] text-pine-600">
+              RUB · USD · THB
+            </p>
+          </div>
         </div>
+        {/* Юридическое название: мельче заголовка, приглушённо-серое, по центру */}
+        <p className="mt-2.5 text-center text-[0.72rem] font-medium text-ink-soft/80">ООО «Саяма НСК»</p>
       </header>
 
       {/* Контент: калькулятор + курсы */}
