@@ -1,0 +1,9 @@
+# Целевые браузеры: тянем поддержку Safari/iOS как можно шире.
+# Файл подхватывается Lightning CSS / esbuild, если сборщик
+# настроен на использование browserslist.
+> 0.5%
+last 2 years
+iOS >= 15
+Safari >= 15
+not dead
+not op_mini all
