@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   isSupabaseConfigured,
   fetchRates as fetchRatesFromSupabase,
@@ -338,35 +338,104 @@ function IconLock() {
   );
 }
 
-/* Запасная эмблема (встроенный SVG): подставляется, только если файла
-   /logo.png нет на сервере, — в шапке никогда не будет «битой» картинки.
-   Кольцо из двух стрелок (цикл обмена), символы ₽ $ ฿ и силуэт слона. */
-const LOGO_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-<defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="26" y1="46" x2="94" y2="46">
-<stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#e5a333"/>
-</linearGradient></defs>
-<rect x="4" y="4" width="112" height="112" rx="26" fill="#0c2e24"/>
-<g><path d="M28.05 34.37A34 34 0 0 1 91.95 34.37" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
-<path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#g)"/></g>
-<g transform="rotate(180 60 46)"><path d="M28.05 34.37A34 34 0 0 1 91.95 34.37" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
-<path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#g)"/></g>
-<text x="60" y="42" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="17" fill="#f1f5ef">$</text>
-<text x="43" y="60" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="13" fill="#34d399">&#8381;</text>
-<text x="77" y="60" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="13" fill="#f0b654">&#3647;</text>
-<g fill="#f0b654"><ellipse cx="57" cy="103" rx="15.5" ry="8.5"/><circle cx="74" cy="98.5" r="7"/>
-<rect x="45.5" y="106" width="3.6" height="9.5" rx="1.8"/><rect x="53" y="106" width="3.6" height="9.5" rx="1.8"/>
-<rect x="60.5" y="106" width="3.6" height="9.5" rx="1.8"/><rect x="67.5" y="106" width="3.6" height="9.5" rx="1.8"/>
-<path d="M79.8 101.5c3.6.4 5.4 2.3 5.6 5.4.15 2.3-1.1 3.7-2.9 3.8" fill="none" stroke="#f0b654" stroke-width="3.1" stroke-linecap="round"/>
-<path d="M42.2 99.5c-2.8.6-3.9 2.8-3.4 5.4" fill="none" stroke="#f0b654" stroke-width="2.4" stroke-linecap="round"/>
-<circle cx="71.4" cy="98.2" r="3.4" fill="#0c2e24"/></g>
-</svg>`;
 
-// Если /logo.png отсутствует — один раз подставляем встроенную эмблему
-function handleLogoError(e: SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget;
-  if (img.dataset.fallback) return; // защита от зацикливания onError
-  img.dataset.fallback = "1";
-  img.src = `image/svg+xml;charset=utf-8,${encodeURIComponent(LOGO_FALLBACK_SVG)}`;
+
+// Встроенная SVG-эмблема как основной логотип (не зависит от внешних файлов)
+function Logo() {
+  return (
+    <svg
+      width="52"
+      height="52"
+      viewBox="0 0 120 120"
+      className="h-[52px] w-[52px] shrink-0 rounded-2xl"
+      role="img"
+      aria-label="Саяма Exchange"
+    >
+      <defs>
+        <linearGradient id="logo-grad" gradientUnits="userSpaceOnUse" x1="26" y1="46" x2="94" y2="46">
+          <stop offset="0" stopColor="#10b981" />
+          <stop offset="1" stopColor="#e5a333" />
+        </linearGradient>
+      </defs>
+      <rect x="4" y="4" width="112" height="112" rx="26" fill="#0c2e24" />
+      <g>
+        <path
+          d="M28.05 34.37A34 34 0 0 1 91.95 34.37"
+          fill="none"
+          stroke="url(#logo-grad)"
+          strokeWidth="7"
+          strokeLinecap="round"
+        />
+        <path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#logo-grad)" />
+      </g>
+      <g transform="rotate(180 60 46)">
+        <path
+          d="M28.05 34.37A34 34 0 0 1 91.95 34.37"
+          fill="none"
+          stroke="url(#logo-grad)"
+          strokeWidth="7"
+          strokeLinecap="round"
+        />
+        <path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#logo-grad)" />
+      </g>
+      <text
+        x="60"
+        y="42"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontWeight="800"
+        fontSize="17"
+        fill="#f1f5ef"
+      >
+        $
+      </text>
+      <text
+        x="43"
+        y="60"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontWeight="700"
+        fontSize="13"
+        fill="#34d399"
+      >
+        ₽
+      </text>
+      <text
+        x="77"
+        y="60"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontWeight="700"
+        fontSize="13"
+        fill="#f0b654"
+      >
+        ฿
+      </text>
+      <g fill="#f0b654">
+        <ellipse cx="57" cy="103" rx="15.5" ry="8.5" />
+        <circle cx="74" cy="98.5" r="7" />
+        <rect x="45.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="53" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="60.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="67.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <path
+          d="M79.8 101.5c3.6.4 5.4 2.3 5.6 5.4.15 2.3-1.1 3.7-2.9 3.8"
+          fill="none"
+          stroke="#f0b654"
+          strokeWidth="3.1"
+          strokeLinecap="round"
+        />
+        <path
+          d="M42.2 99.5c-2.8.6-3.9 2.8-3.4 5.4"
+          fill="none"
+          stroke="#f0b654"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        <circle cx="71.4" cy="98.2" r="3.4" fill="#0c2e24" />
+      </g>
+    </svg>
+  );
 }
 
 /* ---------------- Появление при прокрутке ---------------- */
@@ -1136,15 +1205,8 @@ export default function App() {
       {/* Шапка */}
       <header className="anim-rise w-full max-w-md px-4 pb-5 pt-8 sm:px-0">
         <div className="flex items-center gap-3.5">
-          {/* Логотип-картинка слева от названия */}
-          <img
-            src="/logo.png"
-            alt="Саяма Exchange"
-            width="52"
-            height="52"
-            className="h-[52px] w-[52px] shrink-0 rounded-2xl object-contain"
-            onError={handleLogoError}
-          />
+          {/* Встроенная SVG-эмблема слева от названия */}
+          <Logo />
           <div>
             {/* Название строго в одну строку: Montserrat 700, единый
                 тёмно-графитовый цвет, межбуквенный интервал 0.5px */}
