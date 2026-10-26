@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================================
-   ДИЗАЙН-СИСТЕМА «ВАЛЮТНЫЙ ДВОР»
+   ДИЗАЙН-СИСТЕМА «САЯМА EXCHANGE»
    Светлая тема: тёплая «бумажная» зелень, глубокая хвоя,
    латунное золото для цифр и акцентов.
    ------------------------------------------------------------
@@ -174,12 +174,6 @@ input[type="number"] {
   }
 }
 
-@keyframes tickerMove {
-  to {
-    transform: translateX(-50%);
-  }
-}
-
 @keyframes riseIn {
   from {
     opacity: 0;
@@ -284,16 +278,16 @@ input[type="number"] {
   }
 }
 
-.anim-shake {
-  animation: shakeX 0.4s ease both;
-}
-
 .anim-rise {
   animation: riseIn 0.65s cubic-bezier(0.22, 0.9, 0.3, 1) both;
 }
 
 .anim-pop {
   animation: popIn 0.45s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.anim-shake {
+  animation: shakeX 0.4s ease both;
 }
 
 .rate-flash {
@@ -334,23 +328,12 @@ input[type="number"] {
   transform: none;
 }
 
-/* Бегущая строка с курсами: дорожка из двух одинаковых половин,
-   сдвиг на -50% даёт бесшовный цикл. Пауза при наведении. */
-.ticker-track {
-  animation: tickerMove 42s linear infinite;
-  will-change: transform;
-}
-.ticker:hover .ticker-track {
-  animation-play-state: paused;
-}
-
 /* Уважение к prefers-reduced-motion (настройка доступности iOS/Android) */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
   body::before,
-  .ticker-track,
   .live-glow,
   .anim-rise,
   .anim-pop,

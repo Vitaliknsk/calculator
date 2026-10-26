@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  isSupabaseConfigured,
+  fetchRates as fetchRatesFromSupabase,
+  saveRates as saveRatesToSupabase,
+  subscribeToRates,
+} from "./lib/supabase";
 
 /* ================================================================
    САЯМА EXCHANGE — минималистичный SPA-калькулятор: RUB / USD / THB
@@ -17,11 +23,15 @@ import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "r
     невозможно ни кликом, ни swap'ом, ни старыми настройками из
     LocalStorage (см. isAllowedPair + loadPrefs).
 
-    Курсы лежат в LocalStorage (ключ valdvor.rates.v2) и переживают
-    перезагрузку. Админ-панель защищена паролем (см. ADMIN_PASSWORD):
-    вход — неприметная ссылка «Настройки курсов» в подвале или
-    Ctrl/Cmd + Shift + A, затем окно ввода пароля. Успешный вход
-    запоминается в sessionStorage и не спрашивается повторно.
+    Курсы синхронизируются между устройствами через Supabase Realtime:
+    когда админ меняет курсы на одном устройстве — все остальные
+    клиенты получают обновление мгновенно (без перезагрузки страницы).
+    Если Supabase не настроен — приложение работает через LocalStorage
+    (как раньше), но без синхронизации между устройствами.
+    Админ-панель защищена паролем (см. ADMIN_PASSWORD): вход —
+    неприметная ссылка «Настройки курсов» в подвале или Ctrl/Cmd +
+    Shift + A, затем окно ввода пароля. Успешный вход запоминается
+    в sessionStorage и не спрашивается повторно.
     ================================================================ */
 
 /* ---------------- Типы и справочники ---------------- */
@@ -87,13 +97,13 @@ const sym = (c: Currency) => CURRENCY_META[c].symbol;
    Базис всех вычислений — тайский бат. Для каждой валюты известна
    её «цена» в батах:  perThb = { RUB: rubThb, USD: usdThb, THB: 1 }.
 
-    Курс любой пары:  rate(X → Y) = perThb[X] / perThb[Y]
-      RUB → THB = rubThb / 1 = rubThb          (прямой курс админа)
-      THB → RUB = 1 / rubThb                   (обратный)
-      USD → THB = usdThb,  THB → USD = 1 / usdThb
-    Направление USD ↔ RUB в интерфейсе запрещено (isAllowedPair),
-    поэтому в расчётах участвуют только пары через бат.
-    ================================================================ */
+   Курс любой пары:  rate(X → Y) = perThb[X] / perThb[Y]
+     RUB → THB = rubThb / 1 = rubThb          (прямой курс админа)
+     THB → RUB = 1 / rubThb                   (обратный)
+     USD → THB = usdThb,  THB → USD = 1 / usdThb
+   Направление USD ↔ RUB в интерфейсе запрещено (isAllowedPair),
+   поэтому в расчётах участвуют только пары через бат.
+   ================================================================ */
 
 function getRate(from: Currency, to: Currency, rates: Rates): number {
   if (from === to) return 1;
@@ -121,6 +131,7 @@ function isAllowedPair(a: Currency, b: Currency): boolean {
 function allowedTargets(from: Currency): Currency[] {
   return CURRENCIES.filter((c) => isAllowedPair(from, c));
 }
+
 /* ---------------- LocalStorage: чтение с защитой от NaN ---------------- */
 
 function loadRates(): Rates {
@@ -281,6 +292,16 @@ function IconAlert() {
   );
 }
 
+function IconInfo() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 7.5h.01" />
+    </svg>
+  );
+}
+
 function IconClock() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" {...svgProps}>
@@ -307,35 +328,114 @@ function IconChevron() {
   );
 }
 
-/* Запасная эмблема (встроенный SVG): подставляется, только если файла
-   /logo.png нет на сервере, — в шапке никогда не будет «битой» картинки.
-   Кольцо из двух стрелок (цикл обмена), символы ₽ $ ฿ и силуэт слона. */
-const LOGO_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-<defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="26" y1="46" x2="94" y2="46">
-<stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#e5a333"/>
-</linearGradient></defs>
-<rect x="4" y="4" width="112" height="112" rx="26" fill="#0c2e24"/>
-<g><path d="M28.05 34.37A34 34 0 0 1 91.95 34.37" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
-<path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#g)"/></g>
-<g transform="rotate(180 60 46)"><path d="M28.05 34.37A34 34 0 0 1 91.95 34.37" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
-<path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#g)"/></g>
-<text x="60" y="42" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="17" fill="#f1f5ef">$</text>
-<text x="43" y="60" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="13" fill="#34d399">&#8381;</text>
-<text x="77" y="60" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="13" fill="#f0b654">&#3647;</text>
-<g fill="#f0b654"><ellipse cx="57" cy="103" rx="15.5" ry="8.5"/><circle cx="74" cy="98.5" r="7"/>
-<rect x="45.5" y="106" width="3.6" height="9.5" rx="1.8"/><rect x="53" y="106" width="3.6" height="9.5" rx="1.8"/>
-<rect x="60.5" y="106" width="3.6" height="9.5" rx="1.8"/><rect x="67.5" y="106" width="3.6" height="9.5" rx="1.8"/>
-<path d="M79.8 101.5c3.6.4 5.4 2.3 5.6 5.4.15 2.3-1.1 3.7-2.9 3.8" fill="none" stroke="#f0b654" stroke-width="3.1" stroke-linecap="round"/>
-<path d="M42.2 99.5c-2.8.6-3.9 2.8-3.4 5.4" fill="none" stroke="#f0b654" stroke-width="2.4" stroke-linecap="round"/>
-<circle cx="71.4" cy="98.2" r="3.4" fill="#0c2e24"/></g>
-</svg>`;
+function IconLock() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+      <path d="M12 14.5v2.5" />
+    </svg>
+  );
+}
 
-// Если /logo.png отсутствует — один раз подставляем встроенную эмблему
-function handleLogoError(e: SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget;
-  if (img.dataset.fallback) return; // защита от зацикливания onError
-  img.dataset.fallback = "1";
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(LOGO_FALLBACK_SVG)}`;
+
+
+// Встроенная SVG-эмблема как основной логотип (не зависит от внешних файлов)
+function Logo() {
+  return (
+    <svg
+      width="52"
+      height="52"
+      viewBox="0 0 120 120"
+      className="h-[52px] w-[52px] shrink-0 rounded-2xl"
+      role="img"
+      aria-label="Саяма Exchange"
+    >
+      <defs>
+        <linearGradient id="logo-grad" gradientUnits="userSpaceOnUse" x1="26" y1="46" x2="94" y2="46">
+          <stop offset="0" stopColor="#10b981" />
+          <stop offset="1" stopColor="#e5a333" />
+        </linearGradient>
+      </defs>
+      <rect x="4" y="4" width="112" height="112" rx="26" fill="#0c2e24" />
+      <g>
+        <path
+          d="M28.05 34.37A34 34 0 0 1 91.95 34.37"
+          fill="none"
+          stroke="url(#logo-grad)"
+          strokeWidth="7"
+          strokeLinecap="round"
+        />
+        <path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#logo-grad)" />
+      </g>
+      <g transform="rotate(180 60 46)">
+        <path
+          d="M28.05 34.37A34 34 0 0 1 91.95 34.37"
+          fill="none"
+          stroke="url(#logo-grad)"
+          strokeWidth="7"
+          strokeLinecap="round"
+        />
+        <path d="M95.7 44.7 98.06 32.15 85.84 36.59z" fill="url(#logo-grad)" />
+      </g>
+      <text
+        x="60"
+        y="42"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontWeight="800"
+        fontSize="17"
+        fill="#f1f5ef"
+      >
+        $
+      </text>
+      <text
+        x="43"
+        y="60"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontWeight="700"
+        fontSize="13"
+        fill="#34d399"
+      >
+        ₽
+      </text>
+      <text
+        x="77"
+        y="60"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontWeight="700"
+        fontSize="13"
+        fill="#f0b654"
+      >
+        ฿
+      </text>
+      <g fill="#f0b654">
+        <ellipse cx="57" cy="103" rx="15.5" ry="8.5" />
+        <circle cx="74" cy="98.5" r="7" />
+        <rect x="45.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="53" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="60.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <rect x="67.5" y="106" width="3.6" height="9.5" rx="1.8" />
+        <path
+          d="M79.8 101.5c3.6.4 5.4 2.3 5.6 5.4.15 2.3-1.1 3.7-2.9 3.8"
+          fill="none"
+          stroke="#f0b654"
+          strokeWidth="3.1"
+          strokeLinecap="round"
+        />
+        <path
+          d="M42.2 99.5c-2.8.6-3.9 2.8-3.4 5.4"
+          fill="none"
+          stroke="#f0b654"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        <circle cx="71.4" cy="98.2" r="3.4" fill="#0c2e24" />
+      </g>
+    </svg>
+  );
 }
 
 /* ---------------- Появление при прокрутке ---------------- */
@@ -601,16 +701,6 @@ function ConverterCard(props: ConverterProps) {
 }
 
 /* ---------------- Экран ввода пароля (защита админ-панели) ---------------- */
-
-function IconLock() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}>
-      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
-      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
-      <path d="M12 14.5v2.5" />
-    </svg>
-  );
-}
 
 function PasswordGate({ onAuthed, onClose }: { onAuthed: () => void; onClose: () => void }) {
   const [value, setValue] = useState("");
@@ -910,13 +1000,15 @@ function AdminModal({ rates, onSave, onClose }: AdminModalProps) {
 
 interface ToastState {
   id: number;
-  kind: "success" | "error";
+  kind: "success" | "error" | "info";
   text: string;
 }
 
 function ToastView({ toast, onClose }: { toast: ToastState; onClose: () => void }) {
   return (
-    <div className="pb-safe fixed bottom-5 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0">
+    <div
+      className="pb-safe fixed bottom-5 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0"
+    >
       <div
         key={toast.id}
         className="anim-toast flex items-center gap-3 rounded-2xl border border-pine-700 bg-pine-900 px-4 py-3.5 text-white shadow-lift"
@@ -924,10 +1016,14 @@ function ToastView({ toast, onClose }: { toast: ToastState; onClose: () => void 
       >
         <span
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-            toast.kind === "success" ? "bg-pine-600" : "bg-danger-600"
+            toast.kind === "success"
+              ? "bg-pine-600"
+              : toast.kind === "error"
+                ? "bg-danger-600"
+                : "bg-gold-500 text-pine-950"
           }`}
         >
-          {toast.kind === "success" ? <IconCheck /> : <IconAlert />}
+          {toast.kind === "success" ? <IconCheck /> : toast.kind === "error" ? <IconAlert /> : <IconInfo />}
         </span>
         <p className="text-sm font-semibold leading-snug">{toast.text}</p>
         <button
@@ -981,6 +1077,53 @@ export default function App() {
     return () => window.clearInterval(t);
   }, []);
 
+  // Начальная загрузка курсов из Supabase (если настроен) + Realtime-подписка
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      console.log("Supabase не настроен — работаем через LocalStorage");
+      return;
+    }
+
+    // Загружаем курсы из Supabase при монтировании
+    fetchRatesFromSupabase().then((row) => {
+      if (row) {
+        const ratesFromDb: Rates = {
+          usdThb: row.usd_thb,
+          rubThb: row.rub_thb,
+          savedAt: new Date(row.saved_at).getTime(),
+        };
+        setRates(ratesFromDb);
+        // Кэшируем в LocalStorage для офлайн-работы
+        try {
+          localStorage.setItem(LS_RATES_KEY, JSON.stringify(ratesFromDb));
+        } catch {
+          /* приватный режим */
+        }
+      }
+    });
+
+    // Подписываемся на Realtime-обновления курсов
+    const unsubscribe = subscribeToRates((row) => {
+      const ratesFromDb: Rates = {
+        usdThb: row.usd_thb,
+        rubThb: row.rub_thb,
+        savedAt: new Date(row.saved_at).getTime(),
+      };
+      setRates(ratesFromDb);
+      // Обновляем локальный кэш
+      try {
+        localStorage.setItem(LS_RATES_KEY, JSON.stringify(ratesFromDb));
+      } catch {
+        /* приватный режим */
+      }
+      showToast("Курсы обновлены администратором", "info");
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [showToast]);
+
   // Вход в админ-панель: если сессия уже подтверждена (sessionStorage) —
   // сразу форма курсов, иначе сначала окно ввода пароля
   const openAdmin = () => {
@@ -1030,18 +1173,31 @@ export default function App() {
     setFx({ id: Date.now(), kind: parseAmount(amount) !== null ? "pulse" : "shake" });
   };
 
-  // Сохранение курсов из админ-панели: LocalStorage + мгновенное применение
-  const handleSaveRates = (next: { usdThb: number; rubThb: number }) => {
+  // Сохранение курсов из админ-панели: Supabase (если настроен) или LocalStorage
+  const handleSaveRates = async (next: { usdThb: number; rubThb: number }) => {
     const updated: Rates = { ...next, savedAt: Date.now() };
-    setRates(updated);
-    try {
-      localStorage.setItem(LS_RATES_KEY, JSON.stringify(updated));
-    } catch {
-      /* приватный режим — курсы проживут до перезагрузки */
+    setRates(updated); // мгновенное применение на текущем устройстве
+
+    // Пытаемся сохранить в Supabase (синхронизация между устройствами)
+    if (isSupabaseConfigured()) {
+      const success = await saveRatesToSupabase(next.usdThb, next.rubThb);
+      if (success) {
+        showToast("Курсы сохранены и синхронизированы со всеми устройствами", "success");
+      } else {
+        showToast("Курсы сохранены локально, но не удалось синхронизировать", "error");
+      }
+    } else {
+      // Fallback: LocalStorage (без синхронизации)
+      try {
+        localStorage.setItem(LS_RATES_KEY, JSON.stringify(updated));
+      } catch {
+        /* приватный режим — курсы проживут до перезагрузки */
+      }
+      showToast("Курсы сохранены (Supabase не настроен — синхронизация между устройствами отключена)", "info");
     }
+
     setAdminOpen(false);
     setFx({ id: Date.now(), kind: "pulse" });
-    showToast("Курсы сохранены и применены", "success");
   };
 
   return (
@@ -1049,15 +1205,8 @@ export default function App() {
       {/* Шапка */}
       <header className="anim-rise w-full max-w-md px-4 pb-5 pt-8 sm:px-0">
         <div className="flex items-center gap-3.5">
-          {/* Логотип-картинка слева от названия */}
-          <img
-            src="/logo.png"
-            alt="Саяма Exchange"
-            width="52"
-            height="52"
-            className="h-[52px] w-[52px] shrink-0 rounded-2xl object-contain"
-            onError={handleLogoError}
-          />
+          {/* Встроенная SVG-эмблема слева от названия */}
+          <Logo />
           <div>
             {/* Название строго в одну строку: Montserrat 700, единый
                 тёмно-графитовый цвет, межбуквенный интервал 0.5px */}
